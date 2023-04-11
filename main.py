@@ -1,5 +1,5 @@
 import streamlit as st
-from your_module import automatic_follow, information_extractor
+from instagram_follower import automatic_follow, information_extractor
 
 def main():
     st.title("Instagram Bot")
@@ -16,7 +16,7 @@ def main():
         csv_file = st.file_uploader("Upload a CSV file", type="csv")
         if csv_file:
             try:
-                automatic_follow(csv_file)
+                automatic_follow(csv_file, st)
                 st.success("Automatic Follow completed successfully.")
             except Exception as e:
                 st.error(e)
@@ -26,7 +26,7 @@ def main():
         st.header("Information Extractor")
         username = st.text_input("Enter Instagram username")
         if username:
-            information_extractor(username)
+            information_extractor(st)
             st.success("Information Extraction completed successfully.")
 
 if __name__ == "__main__":
