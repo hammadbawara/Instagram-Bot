@@ -10,8 +10,13 @@ import requests
 from bs4 import BeautifulSoup
 import datetime
 import os
+import pickle
+import dill
+import re
 
 USER_CREDENTIALS_FILEPATH = "user_credentials.ini"
+TEMP_DIR_NAME = "temp"
+OUPUT_DATA_DIR_NAME = "OUTPUT"
 
 def click_follow_btn(driver):
     for i in range(5):
@@ -47,7 +52,7 @@ def read_credentials():
     except Exception as e:
         raise Exception(f"Error in {USER_CREDENTIALS_FILEPATH} file. Please check the file and try again. {e}")
 
-def try_credentials(driver, username, password):
+def login_to_instagram(driver, username, password):
     for i in range(5):
         try:
             driver.get("https://www.instagram.com/accounts/login/")
@@ -75,7 +80,7 @@ def automatic_follow(csv_file, streamlit_obj):
 
     username, password = read_credentials()
 
-    try_credentials(driver, username, password)
+    login_to_instagram(driver, username, password)
 
     for row in reader:
         profile_url = row[16]
@@ -89,96 +94,130 @@ def automatic_follow(csv_file, streamlit_obj):
 
     driver.quit()
 
+def convert_json_to_cookie(json_cookie):
+    cookies = json.load(json_cookie)
 
-def extract_profile_data(profile_url):
-    """Extracts the required information from an Instagram profile URL and returns it as a list"""
+    # Convert cookies to Instaloader format
+    insta_cookies = {}
+    for cookie in cookies:
+        insta_cookies[cookie['name']] = cookie['value']
+    
+    if not os.path.isdir(TEMP_DIR_NAME):
+        os.mkdir(TEMP_DIR_NAME)
+    with open(f'{TEMP_DIR_NAME}/cookie', 'wb') as f:
+        pickle.dump(insta_cookies, f)
 
-    # Create an instance of Instaloader class
-    L = instaloader.Instaloader()
+def is_extracted_file_exists(username):
+    return os.path.exists(f'{OUPUT_DATA_DIR_NAME}/{username}.csv') and os.path.exists(f'{TEMP_DIR_NAME}/{username}-iterator')
 
-    # Retry up to 5 times in case of errors
-    for i in range(5):
-        try:
-            # Load the profile metadata using the profile URL
-            profile = instaloader.Profile.from_username(L.context, profile_url.split("/")[-1])
+def _extract_bio_info(bio_string):
+    # Regular expressions to match patterns for public addresses, email addresses, cities, and addresses
+    public_address_regex = r'\d{1,4}\s+\w+\s+\w+.*'
+    email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    city_regex = r'\b[A-Z][a-z]+\b'
+    address_regex = r'\b\d+\s[A-Za-z]+\b'
 
-            # Extract the desired information from the profile
-            user_id = str(profile.userid)
-            username = str(profile.username)
-            full_name = str(profile.full_name)
-            followers_count = str(profile.followers)
-            following_count = str(profile.followees)
-            post_count = str(profile.mediacount)
-            is_private = "YES" if profile.is_private else "NO"
-            is_verified = "YES" if profile.is_verified else "NO"
-            is_business = "YES" if profile.is_business_account else "NO"
-            external_url = str(profile.external_url)
-            biography = str(profile.biography)
-            avatar_url = str(profile.profile_pic_url)
+    # Find all matches for each pattern in the bio string
+    public_addresses = re.findall(public_address_regex, bio_string)
+    emails = re.findall(email_regex, bio_string)
+    cities = re.findall(city_regex, bio_string)
+    addresses = re.findall(address_regex, bio_string)
 
-            # Use web scraping to extract additional information
-            response = requests.get(profile_url)
-            soup = BeautifulSoup(response.content, "html.parser")
-            scripts = soup.find_all("script", type="application/ld+json")
-            data = scripts[0].string
-            json_data = json.loads(data)
-            if "address" in json_data:
-                city = str(json_data["address"]["addressLocality"])
-                address = str(json_data["address"]["streetAddress"])
-            else:
-                city = ""
-                address = ""
-            if "email" in json_data:
-                public_email = str(json_data["email"])
-            else:
-                public_email = ""
-            if "telephone" in json_data:
-                public_phone = str(json_data["telephone"])
-            else:
-                public_phone = ""
+    # Return a dictionary containing the extracted information
+    bio_info = {'public_addresses': public_addresses,
+                'emails': emails,
+                'cities': cities,
+                'addresses': addresses}
+    return bio_info
 
-            # Return the extracted information as a list
-            return [user_id, username, full_name, followers_count, following_count, post_count, public_email,
-                    public_phone, city, address, is_private, is_verified, is_business, external_url, biography,
-                    avatar_url, profile_url]
+def _get_follower_data(follower):
+    _id = follower.userid
+    _username = follower.username
+    _full_name = follower.full_name
+    _follower_count = follower.followers
+    _post_count = follower.mediacount
+    _following_count = follower.followees
+    _is_private = "Yes" if follower.is_private else "No"
+    _is_verified = "Yes" if follower.is_verified else "No"
+    _is_business = "Yes" if follower.is_business_account else "No"
+    _external_url = follower.external_url
+    _biography = follower.biography
+    _avatar_url = follower.profile_pic_url_no_iphone
+    _profile_url = f'https://www.instagram.com/{_username}/'
+    bio_info = _extract_bio_info(_biography)
+    _public_email = bio_info['emails'] or ''
+    _public_phone = bio_info['public_addresses'] or ''
+    _city = bio_info['cities'] or ''
+    _public_address = bio_info['addresses'] or ''
 
-        except (instaloader.ProfileNotExistsException, requests.exceptions.RequestException) as e:
-            # Retry after a short delay in case of errors
-            print("Error occurred:", e)
-            print("Retrying in 5 seconds...")
-            time.sleep(5)
-
-    # Return empty if the function fails after multiple retries
-    return [] 
+    return [_id, _username, _full_name, _follower_count, _post_count, 
+        _following_count, _public_email, _public_phone, _city,  
+        _public_address, _is_private, _is_verified, _is_business,
+        _external_url, _biography, _avatar_url, _profile_url] or ''
 
 
-def information_extractor(st):
-    # opening csv file 
-    with open('data.csv', 'r', encoding='utf-8') as file:
-        reader = csv.reader(file)
-        # Skip the header row
-        next(reader)
+def extract_user_information(username, streamlit_obj, file_exists=False):
+
+    ITERATOR_FILE_PATH = f'{TEMP_DIR_NAME}/{username}-iterator'
+    COOKIE_FILE_PATH = f'{TEMP_DIR_NAME}/cookie'
+    OUTPUT_CSV_FILE_PATH = f'{OUPUT_DATA_DIR_NAME}/{username}.csv'
+    if not os.path.isdir(TEMP_DIR_NAME):
+        os.mkdir(TEMP_DIR_NAME)
+    if not os.path.isdir(OUPUT_DATA_DIR_NAME):
+        os.mkdir(OUPUT_DATA_DIR_NAME)
+
+    headings = ["User Id", "User Name", "Full Name", "Followers Count", "Following Count", "Post Count", "Public Email", 
+             "Public Phone", "City", "Address", "Is Private", "Is Verified", "Is Business", "External Url", "Biography",
+             "Avatar Url", "Profile Url"]
+
+    loader = instaloader.Instaloader()
+    try:
+        loader.load_session_from_file("cookie", filename=f'{TEMP_DIR_NAME}/cookie')
+    except:
+        streamlit_obj.error("Error in cookie json file")
+        return
+
+    streamlit_obj.info("Getting user information...")
+
+    try:
+        profile = instaloader.Profile.from_username(loader.context, username)
+    except instaloader.exceptions.ProfileNotExistsException:
+        streamlit_obj.error("Invalid username")
+        return
+    except instaloader.exceptions.ConnectionException:
+        streamlit_obj.error("Connection error")
+        return
+    except instaloader.exceptions.LoginRequiredException:
+        streamlit_obj.error("Login Error")
+        return
+    except instaloader.exceptions.TwoFactorRequiredException:
+        streamlit_obj.error("Two factor authentication error")
+        return
+    except instaloader.exceptions.QueryReturnedBadRequestException or instaloader.exceptions.BadResponseException:
+        streamlit_obj.error("Bad request error. Please login instagram with browser and try again")
+        return
+    
+
+    if file_exists:
+        iterator = dill.loads(open(ITERATOR_FILE_PATH, "rb").read())
+    else:
+        csv.writer(open(OUTPUT_CSV_FILE_PATH, "w", encoding='utf-8')).writerow(headings)
+        iterator = profile.get_followers()
+
+    table = streamlit_obj.table([headings])
+    csv_file = csv.writer(open(OUTPUT_CSV_FILE_PATH, "a", encoding='utf-8'))
+
+    # Loop through the generator of followers and add them to the list
+    for follower in iterator:
+        data = _get_follower_data(follower)
         
-        headings = ["User Id","User Name","Full Name","Followers Count","Following Count","Post Count","Public Email","Public Phone","City","Address","Is Private","Is Verified","Is Business","External Url","Biography","Avatar Url","Profile Url"]
-        table = st.table([headings])
-        
-        now = datetime.datetime.now()
-        date_time_ = now.strftime("%Y%m%d%H%M%S%f")
-        output_file_path = f'Extracted Data/{date_time_}.csv'
-        
-        if not os.path.exists("Extracted Data"):
-            os.makedirs("Extracted Data")
-        with open(output_file_path, "w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(headings)
+        # append everything in csv file
+        csv_file.writerow(data)
+        for i in range(len(data)):
+            data[i] = str(data[i])
+        table.add_rows([data])
 
-        for row in reader:
-            profile_url = row[16]
-            profile_data = extract_profile_data(profile_url)
-            if profile_data:
-                table.add_rows([profile_data])
-                with open(output_file_path, "a", newline="", encoding='utf-8') as file:
-                    writer = csv.writer(file)
-                    writer.writerow(profile_data)
-            else:
-                print("Error extracting data from profile:", profile_url)
+        with open(ITERATOR_FILE_PATH, "wb") as f:
+            dill.dump(iterator, f)
+
+        time.sleep(5)
