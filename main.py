@@ -8,20 +8,10 @@ def main():
     # Create a dropdown menu in the sidebar
     function = st.sidebar.selectbox(
         "Select a Function",
-        ("Automatic Follow", "Information Extractor")
+        ("Information Extractor", "Automatic Follow")
     )
 
-    if function == "Automatic Follow":
-        st.header("Automatic Follow")
-        csv_file = st.file_uploader("Upload a CSV file", type="csv")
-        if csv_file:
-            try:
-                automatic_follow(csv_file, st)
-                st.success("Automatic Follow completed successfully.")
-            except Exception as e:
-                st.error(e)
-
-    elif function == "Information Extractor":
+    if function == "Information Extractor":
         st.header("Information Extractor")
         logged_in = False
         json_file = None
@@ -47,13 +37,25 @@ def main():
                             st.success("Information extraction completed successfully.")
                     else:
                         if st.button("Start Information Extraction"):
-                            extract_user_information(username, st, False)
-                            st.success("Information extraction completed successfully.")
+                            response = extract_user_information(username, st, False)
+                            if response:
+                                st.success("Information extraction completed successfully.")
                 else:
                     if st.button("Start Information Extraction"):
                         extract_user_information(username, st, False)
                         st.success("Information extraction completed successfully.")
             st.empty()
+
+    elif function == "Automatic Follow":
+        st.header("Automatic Follow")
+        csv_file = st.file_uploader("Upload a CSV file", type="csv")
+        if csv_file:
+            try:
+                automatic_follow(csv_file, st)
+                st.success("Automatic Follow completed successfully.")
+            except Exception as e:
+                st.error(e)
+
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,5 @@
-Extracted Data/
+OUTPUT/*
 testing.py
 user_credentials.ini
-temp/
+temp/*
+__pycache__/*

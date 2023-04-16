@@ -6,13 +6,11 @@ from selenium.webdriver.common.by import By
 import configparser
 import instaloader
 import json
-import requests
-from bs4 import BeautifulSoup
-import datetime
 import os
 import pickle
 import dill
 import re
+import random
 
 USER_CREDENTIALS_FILEPATH = "user_credentials.ini"
 TEMP_DIR_NAME = "temp"
@@ -43,11 +41,19 @@ def read_csv_file(csv_file):
     
 
 def read_credentials():
+    if not os.path.isfile(USER_CREDENTIALS_FILEPATH):
+        # CREATING FILE
+        with open(USER_CREDENTIALS_FILEPATH, "w") as file:
+            file.write("[DEFAULT]\n")
+            file.write("username = \n")
+            file.write("password = \n")
     try:
         config = configparser.ConfigParser()
         config.read(USER_CREDENTIALS_FILEPATH)
         username = config["DEFAULT"]["username"]
         password = config["DEFAULT"]["password"]
+        if username == "" or password == "":
+            raise Exception("Please enter your credentials in the file.")
         return username, password
     except Exception as e:
         raise Exception(f"Error in {USER_CREDENTIALS_FILEPATH} file. Please check the file and try again. {e}")
@@ -94,6 +100,8 @@ def automatic_follow(csv_file, streamlit_obj):
 
     driver.quit()
 
+# --------------------------------------------------------------------------------------
+
 def convert_json_to_cookie(json_cookie):
     cookies = json.load(json_cookie)
 
@@ -112,43 +120,59 @@ def is_extracted_file_exists(username):
 
 def _extract_bio_info(bio_string):
     # Regular expressions to match patterns for public addresses, email addresses, cities, and addresses
-    public_address_regex = r'\d{1,4}\s+\w+\s+\w+.*'
-    email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-    city_regex = r'\b[A-Z][a-z]+\b'
-    address_regex = r'\b\d+\s[A-Za-z]+\b'
+    phone_number_regex = "^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$"
+    email_regex = "([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)"
+    city_regex = "^(\\d{1,}) [a-zA-Z0-9\\s]+(\\,)? [a-zA-Z]+(\\,)? [A-Z]{2} [0-9]{5,6}$"
+    address_regex = "\d{1,3}.?\d{0,3}\s[a-zA-Z]{2,30}\s[a-zA-Z]{2,15}"
 
     # Find all matches for each pattern in the bio string
-    public_addresses = re.findall(public_address_regex, bio_string)
+    phone_number = re.findall(phone_number_regex, bio_string)
     emails = re.findall(email_regex, bio_string)
     cities = re.findall(city_regex, bio_string)
     addresses = re.findall(address_regex, bio_string)
 
     # Return a dictionary containing the extracted information
-    bio_info = {'public_addresses': public_addresses,
+    bio_info = {
+                'phone_number': phone_number,
                 'emails': emails,
                 'cities': cities,
                 'addresses': addresses}
     return bio_info
 
-def _get_follower_data(follower):
-    _id = follower.userid
-    _username = follower.username
-    _full_name = follower.full_name
-    _follower_count = follower.followers
-    _post_count = follower.mediacount
-    _following_count = follower.followees
-    _is_private = "Yes" if follower.is_private else "No"
-    _is_verified = "Yes" if follower.is_verified else "No"
-    _is_business = "Yes" if follower.is_business_account else "No"
-    _external_url = follower.external_url
-    _biography = follower.biography
-    _avatar_url = follower.profile_pic_url_no_iphone
-    _profile_url = f'https://www.instagram.com/{_username}/'
-    bio_info = _extract_bio_info(_biography)
-    _public_email = bio_info['emails'] or ''
-    _public_phone = bio_info['public_addresses'] or ''
-    _city = bio_info['cities'] or ''
-    _public_address = bio_info['addresses'] or ''
+def _get_follower_data(follower, streamlit_obj):
+    while True:
+        try:
+            _id = follower.userid
+            _username = follower.username
+            _full_name = follower.full_name
+            _follower_count = follower.followers
+            _post_count = follower.mediacount
+            _following_count = follower.followees
+            _is_private = "Yes" if follower.is_private else "No"
+            _is_verified = "Yes" if follower.is_verified else "No"
+            _is_business = "Yes" if follower.is_business_account else "No"
+            _external_url = follower.external_url
+            _biography = follower.biography
+            _avatar_url = follower.profile_pic_url_no_iphone
+            _profile_url = f'https://www.instagram.com/{_username}/'
+            bio_info = _extract_bio_info(_biography)
+            _public_email = bio_info['emails'] or ''
+            _public_phone = bio_info['phone_number'] or ''
+            _city = bio_info['cities'] or ''
+            _public_address = bio_info['addresses'] or ''
+            break
+        except instaloader.exceptions.ConnectionException or instaloader.exceptions.BadResponseException or instaloader.exceptions.QueryReturnedBadRequestException:
+            streamlit_obj.error("Connection error")
+        except instaloader.exceptions.LoginRequiredException:
+            streamlit_obj.error("Login Error")
+            return False
+        except instaloader.exceptions.ProfileNotExistsException:
+            streamlit_obj.error("Invalid username")
+            return ""
+        except instaloader.exceptions.TwoFactorAuthRequiredException:
+            streamlit_obj.error("Two Factor Authentication Required")
+            return False
+        
 
     return [_id, _username, _full_name, _follower_count, _post_count, 
         _following_count, _public_email, _public_phone, _city,  
@@ -183,19 +207,19 @@ def extract_user_information(username, streamlit_obj, file_exists=False):
         profile = instaloader.Profile.from_username(loader.context, username)
     except instaloader.exceptions.ProfileNotExistsException:
         streamlit_obj.error("Invalid username")
-        return
+        return False
     except instaloader.exceptions.ConnectionException:
         streamlit_obj.error("Connection error")
-        return
+        return False
     except instaloader.exceptions.LoginRequiredException:
         streamlit_obj.error("Login Error")
         return
     except instaloader.exceptions.TwoFactorRequiredException:
         streamlit_obj.error("Two factor authentication error")
-        return
+        return False
     except instaloader.exceptions.QueryReturnedBadRequestException or instaloader.exceptions.BadResponseException:
         streamlit_obj.error("Bad request error. Please login instagram with browser and try again")
-        return
+        return False
     
 
     if file_exists:
@@ -209,7 +233,11 @@ def extract_user_information(username, streamlit_obj, file_exists=False):
 
     # Loop through the generator of followers and add them to the list
     for follower in iterator:
-        data = _get_follower_data(follower)
+        data = _get_follower_data(follower, streamlit_obj)
+
+        if not data:
+            break
+
         
         # append everything in csv file
         csv_file.writerow(data)
@@ -220,4 +248,7 @@ def extract_user_information(username, streamlit_obj, file_exists=False):
         with open(ITERATOR_FILE_PATH, "wb") as f:
             dill.dump(iterator, f)
 
-        time.sleep(5)
+        time.sleep(random.randint(1, 10))
+
+    csv_file.close()
+    return True
