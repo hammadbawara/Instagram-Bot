@@ -10,7 +10,6 @@ import os
 import pickle
 import dill
 import re
-import random
 
 USER_CREDENTIALS_FILEPATH = "user_credentials.ini"
 TEMP_DIR_NAME = "temp"
@@ -120,13 +119,19 @@ def is_extracted_file_exists(username):
 
 def _extract_bio_info(bio_string):
     # Regular expressions to match patterns for public addresses, email addresses, cities, and addresses
-    phone_number_regex = "^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$"
+    phone_number_regex_list = [
+        "\+?\(?([0-9]{3})\)?[-.]?\(?([0-9]{3})\)?[-.]?\(?([0-9]{4})\)?",
+        "\(?([0-9]{3})\)?([ .-]?)([0-9]{3})\2([0-9]{4})"
+    ]
     email_regex = "([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)"
     city_regex = "^(\\d{1,}) [a-zA-Z0-9\\s]+(\\,)? [a-zA-Z]+(\\,)? [A-Z]{2} [0-9]{5,6}$"
     address_regex = "\d{1,3}.?\d{0,3}\s[a-zA-Z]{2,30}\s[a-zA-Z]{2,15}"
 
     # Find all matches for each pattern in the bio string
-    phone_number = re.findall(phone_number_regex, bio_string)
+    for regex in phone_number_regex_list:
+        phone_number = re.findall(regex, bio_string)
+        if phone_number:
+            break
     emails = re.findall(email_regex, bio_string)
     cities = re.findall(city_regex, bio_string)
     addresses = re.findall(address_regex, bio_string)
@@ -225,30 +230,31 @@ def extract_user_information(username, streamlit_obj, file_exists=False):
     if file_exists:
         iterator = dill.loads(open(ITERATOR_FILE_PATH, "rb").read())
     else:
-        csv.writer(open(OUTPUT_CSV_FILE_PATH, "w", encoding='utf-8')).writerow(headings)
+        with open(OUTPUT_CSV_FILE_PATH, 'w', encoding='utf-8', newline='') as csv_file:
+
+            csv.writer(csv_file).writerow(headings)
         iterator = profile.get_followers()
 
     table = streamlit_obj.table([headings])
-    csv_file = csv.writer(open(OUTPUT_CSV_FILE_PATH, "a", encoding='utf-8'))
+    
 
     # Loop through the generator of followers and add them to the list
-    for follower in iterator:
-        data = _get_follower_data(follower, streamlit_obj)
+    with open(OUTPUT_CSV_FILE_PATH, 'a', newline='', encoding='utf-8') as file:
+        for follower in iterator:
+            data = _get_follower_data(follower, streamlit_obj)
+            if not data:
+                break
+            # append everything in csv file
+            csv_writer = csv.writer(file)
+            csv_writer.writerow(data)
+            file.flush()
 
-        if not data:
-            break
+            # showing data to user
+            for i in range(len(data)):
+                data[i] = str(data[i])
+            table.add_rows([data])
 
-        
-        # append everything in csv file
-        csv_file.writerow(data)
-        for i in range(len(data)):
-            data[i] = str(data[i])
-        table.add_rows([data])
-
-        with open(ITERATOR_FILE_PATH, "wb") as f:
-            dill.dump(iterator, f)
-
-        time.sleep(random.randint(1, 10))
-
-    csv_file.close()
+            with open(ITERATOR_FILE_PATH, "wb") as f:
+                dill.dump(iterator, f)
+    
     return True
