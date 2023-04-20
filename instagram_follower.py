@@ -131,15 +131,18 @@ def _extract_bio_info(bio_string):
     for regex in phone_number_regex_list:
         phone_number = re.findall(regex, bio_string)
         if phone_number:
+            phone_number = '+' + ''.join(phone_number[0])
             break
     emails = re.findall(email_regex, bio_string)
+    if emails:
+        email = emails[0]
     cities = re.findall(city_regex, bio_string)
     addresses = re.findall(address_regex, bio_string)
 
     # Return a dictionary containing the extracted information
     bio_info = {
                 'phone_number': phone_number,
-                'emails': emails,
+                'emails': email,
                 'cities': cities,
                 'addresses': addresses}
     return bio_info
