@@ -131,9 +131,10 @@ def _extract_bio_info(bio_string):
     for regex in phone_number_regex_list:
         phone_number = re.findall(regex, bio_string)
         if phone_number:
-            phone_number = '+' + ''.join(phone_number[0])
+            phone_number = ''.join(phone_number[0])
             break
     emails = re.findall(email_regex, bio_string)
+    email = ''
     if emails:
         email = emails[0]
     cities = re.findall(city_regex, bio_string)
@@ -237,6 +238,7 @@ def extract_user_information(username, streamlit_obj, file_exists=False):
 
             csv.writer(csv_file).writerow(headings)
         iterator = profile.get_followers()
+        
 
     table = streamlit_obj.table([headings])
     
@@ -246,7 +248,8 @@ def extract_user_information(username, streamlit_obj, file_exists=False):
         for follower in iterator:
             data = _get_follower_data(follower, streamlit_obj)
             if not data:
-                break
+                return False
+
             # append everything in csv file
             csv_writer = csv.writer(file)
             csv_writer.writerow(data)
