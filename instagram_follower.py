@@ -3,6 +3,8 @@ import time
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import configparser
 import instaloader
 import json
@@ -10,6 +12,14 @@ import os
 import pickle
 import dill
 import re
+import random
+
+def random_delay(lower_delay, upper_delay, placeholder):
+    delay = random.randint(lower_delay, upper_delay)
+    for i in range(delay):
+        time.sleep(1)
+        placeholder.text(f"Delay: {delay} sec.\nNext in {delay - i - 1}")
+    placeholder.text("")
 
 USER_CREDENTIALS_FILEPATH = "user_credentials.ini"
 TEMP_DIR_NAME = "temp"
@@ -18,9 +28,8 @@ OUPUT_DATA_DIR_NAME = "OUTPUT"
 def click_follow_btn(driver):
     for i in range(5):
         try:
-            follow_button = driver.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div/div/div[1]/div[1]/div[2]/section/main/div/header/section/div[1]/div[1]/div/div[1]/button")
+            follow_button = driver.find_element(By.XPATH,"/html/body/div[2]/div/div/div[2]/div/div/div/div[1]/div[1]/div[2]/div[2]/section/main/div/header/section/div[1]/div[1]/div/div[1]/button")
             follow_button.click()
-            time.sleep(2)
             print("Follow button clicked.")
             return True
         except Exception as e:
@@ -57,16 +66,14 @@ def read_credentials():
     except Exception as e:
         raise Exception(f"Error in {USER_CREDENTIALS_FILEPATH} file. Please check the file and try again. {e}")
 
-def login_to_instagram(driver, username, password):
+def login_to_instagram(driver, username, password,ranz):
     for i in range(5):
         try:
             driver.get("https://www.instagram.com/accounts/login/")
-            time.sleep(5)
             username_input = driver.find_element(By.NAME, "username")
             password_input = driver.find_element(By.NAME, "password")
             username_input.send_keys(username)
             password_input.send_keys(password)
-            time.sleep(2)
             password_input.send_keys(Keys.ENTER)
             break
         except:
@@ -77,7 +84,7 @@ def login_to_instagram(driver, username, password):
     else:
         print("Login successful.")
 
-def automatic_follow(csv_file, streamlit_obj):
+def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay):
 
     reader = read_csv_file(csv_file)
 
@@ -85,19 +92,25 @@ def automatic_follow(csv_file, streamlit_obj):
 
     username, password = read_credentials()
 
-    login_to_instagram(driver, username, password)
+    delay_placeholder = streamlit_obj.empty()
 
+    login_to_instagram(driver, username, password)
     for row in reader:
         profile_url = row[16]
         driver.get(profile_url)
-        time.sleep(3)
         
         if click_follow_btn(driver):
             streamlit_obj.success(f'{row[1]} followed successfully.')
         else:
             streamlit_obj.error(f'Error following {row[1]}.')
 
+        # random delay
+        random_delay(lower_delay, upper_delay, delay_placeholder)
+
     driver.quit()
+    # Close the Chrome driver
+    #driver.quit()
+    
 
 # --------------------------------------------------------------------------------------
 
@@ -189,7 +202,7 @@ def _get_follower_data(follower, streamlit_obj):
         _external_url, _biography, _avatar_url, _profile_url] or ''
 
 
-def extract_user_information(username, streamlit_obj, file_exists=False):
+def extract_user_information(username, streamlit_obj, file_exists, lower_delay, upper_delay):
 
     ITERATOR_FILE_PATH = f'{TEMP_DIR_NAME}/{username}-iterator'
     COOKIE_FILE_PATH = f'{TEMP_DIR_NAME}/cookie'
@@ -233,6 +246,7 @@ def extract_user_information(username, streamlit_obj, file_exists=False):
 
     if file_exists:
         iterator = dill.loads(open(ITERATOR_FILE_PATH, "rb").read())
+        
     else:
         with open(OUTPUT_CSV_FILE_PATH, 'w', encoding='utf-8', newline='') as csv_file:
 
@@ -242,6 +256,7 @@ def extract_user_information(username, streamlit_obj, file_exists=False):
 
     table = streamlit_obj.table([headings])
     
+    delay_placeholder = streamlit_obj.empty()
 
     # Loop through the generator of followers and add them to the list
     with open(OUTPUT_CSV_FILE_PATH, 'a', newline='', encoding='utf-8') as file:
@@ -262,5 +277,7 @@ def extract_user_information(username, streamlit_obj, file_exists=False):
 
             with open(ITERATOR_FILE_PATH, "wb") as f:
                 dill.dump(iterator, f)
+            
+            random_delay(lower_delay, upper_delay, delay_placeholder)
     
     return True

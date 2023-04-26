@@ -1,5 +1,6 @@
 import streamlit as st
 from instagram_follower import automatic_follow, extract_user_information, is_extracted_file_exists, convert_json_to_cookie
+import random
 
 def main():
     st.title("Instagram Bot")
@@ -28,21 +29,23 @@ def main():
 
         if logged_in:
             username = st.text_input("Enter Instagram username")
+            lower_delay,upper_delay = st.slider('Select delay',1, 20, (10, 20))
+     
             if username:
                 if is_extracted_file_exists(username):
                     continue_process = st.radio("User data already exists. Do you want to continue the extracting process or start from the beginning?", ("Continue", "Start from the beginning"))
                     if continue_process == "Continue":
                         if st.button("Start Information Extraction"):
-                            extract_user_information(username, st, True)
+                            extract_user_information(username, st, True, lower_delay, upper_delay)
                             st.success("Information extraction completed successfully.")
                     else:
                         if st.button("Start Information Extraction"):
-                            response = extract_user_information(username, st, False)
+                            response = extract_user_information(username, st, False, lower_delay, upper_delay)
                             if response:
                                 st.success("Information extraction completed successfully.")
                 else:
                     if st.button("Start Information Extraction"):
-                        extract_user_information(username, st, False)
+                        extract_user_information(username, st, False, lower_delay, upper_delay)
                         st.success("Information extraction completed successfully.")
             st.empty()
 
@@ -50,8 +53,12 @@ def main():
         st.header("Automatic Follow")
         csv_file = st.file_uploader("Upload a CSV file", type="csv")
         if csv_file:
+            lower_delay,upper_delay = st.slider('Select delay',1, 20, (10, 20))
+            # for delay
+            # ranz = randz(lower_delay,upper_delay)
             try:
-                automatic_follow(csv_file, st)
+                # ranz = randz(lower_delay,upper_delay)
+                automatic_follow(csv_file, st, upper_delay, lower_delay)
                 st.success("Automatic Follow completed successfully.")
             except Exception as e:
                 st.error(e)
