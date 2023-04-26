@@ -3,8 +3,6 @@ import time
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import configparser
 import instaloader
 import json
@@ -66,7 +64,7 @@ def read_credentials():
     except Exception as e:
         raise Exception(f"Error in {USER_CREDENTIALS_FILEPATH} file. Please check the file and try again. {e}")
 
-def login_to_instagram(driver, username, password,ranz):
+def login_to_instagram(driver, username, password):
     for i in range(5):
         try:
             driver.get("https://www.instagram.com/accounts/login/")
