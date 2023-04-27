@@ -1,5 +1,5 @@
 import streamlit as st
-from instagram_follower import automatic_follow, extract_user_information, is_extracted_file_exists, convert_json_to_cookie
+from instagram_follower import automatic_follow, extract_user_information, is_extracted_file_exists, convert_json_to_cookie, followed_file_exists
 import random
 
 def main():
@@ -52,16 +52,24 @@ def main():
     elif function == "Automatic Follow":
         st.header("Automatic Follow")
         csv_file = st.file_uploader("Upload a CSV file", type="csv")
+        lower_delay,upper_delay = st.slider('Select delay',1, 20, (10, 20))
         if csv_file:
-            lower_delay,upper_delay = st.slider('Select delay',1, 20, (10, 20))
-            # for delay
-            # ranz = randz(lower_delay,upper_delay)
             try:
-                # ranz = randz(lower_delay,upper_delay)
-                automatic_follow(csv_file, st, upper_delay, lower_delay)
+                if followed_file_exists(csv_file.name):
+                    continue_process = st.radio("User data already exists. Do you want to continue the extracting process or start from the beginning?", ("Continue", "Start from the beginning"))
+                    if continue_process == "Continue":
+                        if st.button("Start Information Extraction"):
+                            automatic_follow(csv_file, st, upper_delay, lower_delay, True)
+                    else:
+                        if st.button("Start Information Extraction"):
+                            automatic_follow(csv_file, st, upper_delay, lower_delay, False)
+                else:
+                    automatic_follow(csv_file, st, upper_delay, lower_delay, False)
                 st.success("Automatic Follow completed successfully.")
             except Exception as e:
                 st.error(e)
+        
+        
 
 
 if __name__ == "__main__":

@@ -11,6 +11,58 @@ import pickle
 import dill
 import re
 import random
+import datetime
+
+
+USER_CREDENTIALS_FILEPATH = "user_credentials.ini"
+TEMP_DIR_NAME = "temp"
+OUPUT_DATA_DIR_NAME = "OUTPUT"
+FOLLOWED_COUNT_FILE = "followed_count.json"
+FOLLOWED_COUNT_PATH = f'{TEMP_DIR_NAME}/{FOLLOWED_COUNT_FILE}'
+FOLLOW_LIMIT = 200
+
+def followed_file_exists(csv_file_name):
+    if os.path.isfile(f'{TEMP_DIR_NAME}/{csv_file_name}-temp'):
+        return True
+    else:
+        return False
+
+def get_number_of_followed(csv_file_name):
+    try:
+        with open(f'{TEMP_DIR_NAME}/{csv_file_name}-temp') as f:
+            return int(f.read())
+    except:
+        return 0
+
+def save_number_of_followed(csv_file_name, count):
+    try:
+        with open(f'{TEMP_DIR_NAME}/{csv_file_name}-temp', "w") as f:
+            f.write(str(count))
+    except:
+        pass
+
+def save_followed_count(count):
+    """Saves the number of users followed today to a JSON file."""
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    data = {}
+    try:
+        with open(FOLLOWED_COUNT_PATH, 'r') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        pass
+    data[today] = count
+    with open(FOLLOWED_COUNT_PATH, 'w') as f:
+        json.dump(data, f)
+
+def get_followed_count():
+    """Gets the number of users followed today from the saved JSON file."""
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    try:
+        with open(FOLLOWED_COUNT_PATH, 'r') as f:
+            data = json.load(f)
+            return data.get(today, 0)
+    except FileNotFoundError:
+        return 0
 
 def random_delay(lower_delay, upper_delay, placeholder):
     delay = random.randint(lower_delay, upper_delay)
@@ -18,10 +70,6 @@ def random_delay(lower_delay, upper_delay, placeholder):
         time.sleep(1)
         placeholder.text(f"Delay: {delay} sec.\nNext in {delay - i - 1}")
     placeholder.text("")
-
-USER_CREDENTIALS_FILEPATH = "user_credentials.ini"
-TEMP_DIR_NAME = "temp"
-OUPUT_DATA_DIR_NAME = "OUTPUT"
 
 def click_follow_btn(driver):
     for i in range(5):
@@ -60,14 +108,18 @@ def read_credentials():
         password = config["DEFAULT"]["password"]
         if username == "" or password == "":
             raise Exception("Please enter your credentials in the file.")
+        print("Credentials read successfully")
         return username, password
     except Exception as e:
         raise Exception(f"Error in {USER_CREDENTIALS_FILEPATH} file. Please check the file and try again. {e}")
 
 def login_to_instagram(driver, username, password):
+    print("Login to Instagram")
     for i in range(5):
         try:
             driver.get("https://www.instagram.com/accounts/login/")
+            # wait for complete load
+            driver.implicitly_wait(5)
             username_input = driver.find_element(By.NAME, "username")
             password_input = driver.find_element(By.NAME, "password")
             username_input.send_keys(username)
@@ -82,7 +134,7 @@ def login_to_instagram(driver, username, password):
     else:
         print("Login successful.")
 
-def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay):
+def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue_):
 
     reader = read_csv_file(csv_file)
 
@@ -93,17 +145,40 @@ def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay):
     delay_placeholder = streamlit_obj.empty()
 
     login_to_instagram(driver, username, password)
-    for row in reader:
+    
+    followed_today = get_followed_count()
+
+    count = 0
+
+    if continue_:
+        count = get_number_of_followed(csv_file.name)
+        print(f"Continuing from the {count}")
+        reader_iterator = reader.__iter__()
+        for i in range(count):
+            reader_iterator.__next__()
+        print(f"Iterator value {reader_iterator}")
+    else:
+        reader_iterator = reader.__iter__()
+    
+    for row in reader_iterator:
+        # check no of account followed today
+        if followed_today >= FOLLOW_LIMIT:
+            streamlit_obj.error(f"You have reached today limit of following {FOLLOW_LIMIT} people. Try again tomorrow")
+            return
         profile_url = row[16]
         driver.get(profile_url)
         
         if click_follow_btn(driver):
             streamlit_obj.success(f'{row[1]} followed successfully.')
+            save_followed_count(followed_today + 1)
         else:
             streamlit_obj.error(f'Error following {row[1]}.')
 
+        count += 1
+        save_number_of_followed(csv_file.name, count)
         # random delay
         random_delay(lower_delay, upper_delay, delay_placeholder)
+        
 
     driver.quit()
     # Close the Chrome driver
