@@ -65,7 +65,6 @@ def main():
                             automatic_follow(csv_file, st, upper_delay, lower_delay, False)
                 else:
                     automatic_follow(csv_file, st, upper_delay, lower_delay, False)
-                st.success("Automatic Follow completed successfully.")
             except Exception as e:
                 st.error(e)
         

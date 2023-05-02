@@ -21,7 +21,7 @@ OUPUT_DATA_DIR_NAME = "OUTPUT"
 FOLLOWED_COUNT_FILE = "followed_count.json"
 FOLLOWED_COUNT_PATH = f'{TEMP_DIR_NAME}/{FOLLOWED_COUNT_FILE}'
 SESSION_ID_FILE = f'{TEMP_DIR_NAME}/sessionid'
-FOLLOW_LIMIT = 2
+FOLLOW_LIMIT = 3
 
 def followed_file_exists(csv_file_name):
     if os.path.isfile(f'{TEMP_DIR_NAME}/{csv_file_name}-temp'):
@@ -60,9 +60,10 @@ def get_followed_count():
     """Gets the number of users followed today from the saved JSON file."""
     today = datetime.date.today().strftime("%Y-%m-%d")
     try:
+        print("Followed count path", FOLLOWED_COUNT_PATH)
         with open(FOLLOWED_COUNT_PATH, 'r') as f:
             data = json.load(f)
-            return data.get(today, 0)
+            return data[today]
     except FileNotFoundError:
         return 0
 
@@ -137,7 +138,11 @@ def login_to_instagram(driver, username, password):
         print("Login successful.")
 
 def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue_):
-
+    followed_today = get_followed_count()
+    if followed_today >= FOLLOW_LIMIT:
+        streamlit_obj.error(f"You have reached today limit of following {FOLLOW_LIMIT} people. Try again tomorrow")
+        return
+    
     reader = read_csv_file(csv_file)
 
     driver = webdriver.Edge()
@@ -147,8 +152,6 @@ def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue
     delay_placeholder = streamlit_obj.empty()
 
     login_to_instagram(driver, username, password)
-    
-    followed_today = get_followed_count()
 
     count = 0
 
@@ -162,6 +165,9 @@ def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue
     else:
         reader_iterator = reader.__iter__()
     
+    print("Followed today: ", followed_today)
+    print("Follow limit: ", FOLLOW_LIMIT)
+
     for row in reader_iterator:
         # check no of account followed today
         if followed_today >= FOLLOW_LIMIT:
@@ -193,14 +199,16 @@ def convert_json_to_cookie(json_cookie):
     cookies = json.load(json_cookie)
     # Convert cookies to Instaloader format
     insta_cookies = {}
+
+    if not os.path.isdir(TEMP_DIR_NAME):
+        os.mkdir(TEMP_DIR_NAME)
+        
     for cookie in cookies:
         insta_cookies[cookie['name']] = cookie['value']
         if cookie.get('name') == 'sessionid':
             with open(SESSION_ID_FILE, 'w') as f:
                 f.write(cookie['value'])
-    
-    if not os.path.isdir(TEMP_DIR_NAME):
-        os.mkdir(TEMP_DIR_NAME)
+
     with open(f'{TEMP_DIR_NAME}/cookie', 'wb') as f:
         pickle.dump(insta_cookies, f)
 
