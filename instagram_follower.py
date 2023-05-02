@@ -12,6 +12,7 @@ import dill
 import re
 import random
 import datetime
+import instagrapi
 
 
 USER_CREDENTIALS_FILEPATH = "user_credentials.ini"
@@ -19,7 +20,8 @@ TEMP_DIR_NAME = "temp"
 OUPUT_DATA_DIR_NAME = "OUTPUT"
 FOLLOWED_COUNT_FILE = "followed_count.json"
 FOLLOWED_COUNT_PATH = f'{TEMP_DIR_NAME}/{FOLLOWED_COUNT_FILE}'
-FOLLOW_LIMIT = 200
+SESSION_ID_FILE = f'{TEMP_DIR_NAME}/sessionid'
+FOLLOW_LIMIT = 2
 
 def followed_file_exists(csv_file_name):
     if os.path.isfile(f'{TEMP_DIR_NAME}/{csv_file_name}-temp'):
@@ -189,11 +191,13 @@ def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue
 
 def convert_json_to_cookie(json_cookie):
     cookies = json.load(json_cookie)
-
     # Convert cookies to Instaloader format
     insta_cookies = {}
     for cookie in cookies:
         insta_cookies[cookie['name']] = cookie['value']
+        if cookie.get('name') == 'sessionid':
+            with open(SESSION_ID_FILE, 'w') as f:
+                f.write(cookie['value'])
     
     if not os.path.isdir(TEMP_DIR_NAME):
         os.mkdir(TEMP_DIR_NAME)
@@ -229,12 +233,29 @@ def _extract_bio_info(bio_string):
     # Return a dictionary containing the extracted information
     bio_info = {
                 'phone_number': phone_number,
-                'emails': email,
-                'cities': cities,
-                'addresses': addresses}
+                'email': email,
+                'city': cities,
+                'address': addresses}
     return bio_info
 
-def _get_follower_data(follower, streamlit_obj):
+def _extract_email_phone_number(instagrapi_cl, username):
+    user_id = instagrapi_cl.user_id_from_username(username)
+    user = instagrapi_cl.user_info(user_id)
+    
+    email = user.public_email
+    phone_number = user.contact_phone_number
+    city = user.city_name
+    address = user.address_street
+    
+    return {
+        "email": email, 
+        "phone_number":phone_number, 
+        "city":city, 
+        "address":address
+        }
+
+
+def _get_follower_data(follower, streamlit_obj, instagrapi_client):
     while True:
         try:
             _id = follower.userid
@@ -250,11 +271,14 @@ def _get_follower_data(follower, streamlit_obj):
             _biography = follower.biography
             _avatar_url = follower.profile_pic_url_no_iphone
             _profile_url = f'https://www.instagram.com/{_username}/'
-            bio_info = _extract_bio_info(_biography)
-            _public_email = bio_info['emails'] or ''
-            _public_phone = bio_info['phone_number'] or ''
-            _city = bio_info['cities'] or ''
-            _public_address = bio_info['addresses'] or ''
+            if _is_business == "Yes":
+                public_data = _extract_email_phone_number(instagrapi_client, _username)
+            else:
+                public_data = _extract_bio_info(_biography)
+            _public_email = public_data['email'] or ''
+            _public_phone = public_data['phone_number'] or ''
+            _city = public_data['city'] or ''
+            _public_address = public_data['address'] or ''
             break
         except instaloader.exceptions.ConnectionException or instaloader.exceptions.BadResponseException or instaloader.exceptions.QueryReturnedBadRequestException:
             streamlit_obj.error("Connection error")
@@ -273,7 +297,6 @@ def _get_follower_data(follower, streamlit_obj):
         _following_count, _public_email, _public_phone, _city,  
         _public_address, _is_private, _is_verified, _is_business,
         _external_url, _biography, _avatar_url, _profile_url] or ''
-
 
 def extract_user_information(username, streamlit_obj, file_exists, lower_delay, upper_delay):
 
@@ -331,10 +354,25 @@ def extract_user_information(username, streamlit_obj, file_exists, lower_delay, 
     
     delay_placeholder = streamlit_obj.empty()
 
+    # instagrapi
+    with open(SESSION_ID_FILE) as f:
+        session_id = f.read()
+    for i in range(5):
+        try:
+            instagrapi_client = instagrapi.Client()
+            
+            instagrapi_client.login_by_sessionid(session_id)
+            break
+        except:
+            pass
+    else:
+        streamlit_obj.error("Login Error check your network")
+        return
+
     # Loop through the generator of followers and add them to the list
     with open(OUTPUT_CSV_FILE_PATH, 'a', newline='', encoding='utf-8') as file:
         for follower in iterator:
-            data = _get_follower_data(follower, streamlit_obj)
+            data = _get_follower_data(follower, streamlit_obj, instagrapi_client)
             if not data:
                 return False
 
