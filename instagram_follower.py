@@ -164,9 +164,6 @@ def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue
         print(f"Iterator value {reader_iterator}")
     else:
         reader_iterator = reader.__iter__()
-    
-    print("Followed today: ", followed_today)
-    print("Follow limit: ", FOLLOW_LIMIT)
 
     for row in reader_iterator:
         # check no of account followed today
@@ -178,7 +175,8 @@ def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue
         
         if click_follow_btn(driver):
             streamlit_obj.success(f'{row[1]} followed successfully.')
-            save_followed_count(followed_today + 1)
+            followed_today += 1
+            save_followed_count(followed_today)
         else:
             streamlit_obj.error(f'Error following {row[1]}.')
 
