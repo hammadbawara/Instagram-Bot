@@ -21,51 +21,59 @@ OUPUT_DATA_DIR_NAME = "OUTPUT"
 FOLLOWED_COUNT_FILE = "followed_count.json"
 FOLLOWED_COUNT_PATH = f'{TEMP_DIR_NAME}/{FOLLOWED_COUNT_FILE}'
 SESSION_ID_FILE = f'{TEMP_DIR_NAME}/sessionid'
-FOLLOW_LIMIT = 3
+FOLLOW_LIMIT = 4
 
-def followed_file_exists(csv_file_name):
-    if os.path.isfile(f'{TEMP_DIR_NAME}/{csv_file_name}-temp'):
-        return True
-    else:
-        return False
+class FollowedFile:
+    def __init__(self, csv_file_name):
+        self.file_path = f'{TEMP_DIR_NAME}/{csv_file_name}-temp'
 
-def get_number_of_followed(csv_file_name):
-    try:
-        with open(f'{TEMP_DIR_NAME}/{csv_file_name}-temp') as f:
-            return int(f.read())
-    except:
-        return 0
+        if not os.path.isfile(self.file_path):
+            with open(self.file_path, "w") as f:
+                f.write(str(0))
 
-def save_number_of_followed(csv_file_name, count):
-    try:
-        with open(f'{TEMP_DIR_NAME}/{csv_file_name}-temp', "w") as f:
-            f.write(str(count))
-    except:
-        pass
+    def exists(self):
+        return os.path.isfile(self.file_path)
 
-def save_followed_count(count):
-    """Saves the number of users followed today to a JSON file."""
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    data = {}
-    try:
-        with open(FOLLOWED_COUNT_PATH, 'r') as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        pass
-    data[today] = count
-    with open(FOLLOWED_COUNT_PATH, 'w') as f:
-        json.dump(data, f)
+    def get_count(self):
+        try:
+            with open(self.file_path) as f:
+                return int(f.read())
+        except:
+            return 0
 
-def get_followed_count():
-    """Gets the number of users followed today from the saved JSON file."""
-    today = datetime.date.today().strftime("%Y-%m-%d")
-    try:
-        print("Followed count path", FOLLOWED_COUNT_PATH)
-        with open(FOLLOWED_COUNT_PATH, 'r') as f:
-            data = json.load(f)
-            return data[today]
-    except FileNotFoundError:
-        return 0
+    def update(self, count):
+        try:
+            with open(self.file_path, "w") as f:
+                f.write(str(count))
+        except:
+            pass
+
+class FollowCountToday:
+    def __init__(self):
+        self.followed_count_path = "followed_count.json"
+        self.today = datetime.date.today().strftime("%Y-%m-%d")
+
+    def update(self, count):
+        """Saves the number of users followed today to a JSON file."""
+        data = {}
+        try:
+            with open(self.followed_count_path, 'r') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            pass
+        data[self.today] = count
+        with open(self.followed_count_path, 'w') as f:
+            json.dump(data, f)
+
+    def get(self):
+        """Gets the number of users followed today from the saved JSON file."""
+        try:
+            with open(self.followed_count_path, 'r') as f:
+                data = json.load(f)
+                return data[self.today]
+        except (FileNotFoundError, KeyError):
+            return 0
+
 
 def random_delay(lower_delay, upper_delay, placeholder):
     delay = random.randint(lower_delay, upper_delay)
@@ -138,7 +146,9 @@ def login_to_instagram(driver, username, password):
         print("Login successful.")
 
 def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue_):
-    followed_today = get_followed_count()
+    follow_count_today = FollowCountToday()
+    followed_today = follow_count_today.get()
+
     if followed_today >= FOLLOW_LIMIT:
         streamlit_obj.error(f"You have reached today limit of following {FOLLOW_LIMIT} people. Try again tomorrow")
         return
@@ -155,8 +165,10 @@ def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue
 
     count = 0
 
+    followed_file = FollowedFile(csv_file.name)
+
     if continue_:
-        count = get_number_of_followed(csv_file.name)
+        count = followed_file.get_count()
         print(f"Continuing from the {count}")
         reader_iterator = reader.__iter__()
         for i in range(count):
@@ -176,12 +188,12 @@ def automatic_follow(csv_file, streamlit_obj, upper_delay, lower_delay, continue
         if click_follow_btn(driver):
             streamlit_obj.success(f'{row[1]} followed successfully.')
             followed_today += 1
-            save_followed_count(followed_today)
+            follow_count_today.update(followed_today)
         else:
             streamlit_obj.error(f'Error following {row[1]}.')
 
         count += 1
-        save_number_of_followed(csv_file.name, count)
+        followed_file.update(count)
         # random delay
         random_delay(lower_delay, upper_delay, delay_placeholder)
         

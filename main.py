@@ -1,6 +1,5 @@
 import streamlit as st
-from instagram_follower import automatic_follow, extract_user_information, is_extracted_file_exists, convert_json_to_cookie, followed_file_exists
-import random
+from instagram_follower import automatic_follow, extract_user_information, is_extracted_file_exists, convert_json_to_cookie, FollowedFile
 
 def main():
     st.title("Instagram Bot")
@@ -55,7 +54,7 @@ def main():
         lower_delay,upper_delay = st.slider('Select delay',1, 20, (10, 20))
         if csv_file:
             try:
-                if followed_file_exists(csv_file.name):
+                if FollowedFile(csv_file.name).exists():
                     continue_process = st.radio("User data already exists. Do you want to continue the extracting process or start from the beginning?", ("Continue", "Start from the beginning"))
                     if continue_process == "Continue":
                         if st.button("Start Information Extraction"):
