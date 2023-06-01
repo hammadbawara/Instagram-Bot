@@ -256,10 +256,31 @@ def _extract_bio_info(bio_string):
                 'address': addresses}
     return bio_info
 
-def _extract_email_phone_number(instagrapi_cl, username):
-    user_id = instagrapi_cl.user_id_from_username(username)
-    user = instagrapi_cl.user_info(user_id)
-    
+def _extract_email_phone_number(session_id, username):
+
+    for i in range(5):
+        try:
+            instagrapi_cl = instagrapi.Client()
+            
+            instagrapi_cl.login_by_sessionid(session_id)
+            break
+        except:
+            pass
+    else:
+        print("Login error instagrapi. Retrying in 3 seconds")
+        time.sleep(3)
+        
+
+    for i in range(5):
+        user_id = instagrapi_cl.user_id_from_username(username)
+        user = instagrapi_cl.user_info(user_id)
+
+        if user.public_email == None:
+            print(f"Email of {username} not found Retrying in 5 seconds")
+            time.sleep(5)
+        else:
+            break
+        
     email = user.public_email
     phone_number = user.contact_phone_number
     city = user.city_name
@@ -273,7 +294,7 @@ def _extract_email_phone_number(instagrapi_cl, username):
         }
 
 
-def _get_follower_data(follower, streamlit_obj, instagrapi_client):
+def _get_follower_data(follower, streamlit_obj, session_id):
     while True:
         try:
             _id = follower.userid
@@ -290,7 +311,7 @@ def _get_follower_data(follower, streamlit_obj, instagrapi_client):
             _avatar_url = follower.profile_pic_url_no_iphone
             _profile_url = f'https://www.instagram.com/{_username}/'
             if _is_business == "Yes":
-                public_data = _extract_email_phone_number(instagrapi_client, _username)
+                public_data = _extract_email_phone_number(session_id, _username)
             else:
                 public_data = _extract_bio_info(_biography)
             _public_email = public_data['email'] or ''
@@ -375,24 +396,15 @@ def extract_user_information(username, streamlit_obj, file_exists, lower_delay, 
     # instagrapi
     with open(SESSION_ID_FILE) as f:
         session_id = f.read()
-    for i in range(5):
-        try:
-            instagrapi_client = instagrapi.Client()
-            
-            instagrapi_client.login_by_sessionid(session_id)
-            break
-        except:
-            pass
-    else:
-        streamlit_obj.error("Login Error check your network")
-        return
 
     # Loop through the generator of followers and add them to the list
     with open(OUTPUT_CSV_FILE_PATH, 'a', newline='', encoding='utf-8') as file:
         for follower in iterator:
-            data = _get_follower_data(follower, streamlit_obj, instagrapi_client)
+            data = _get_follower_data(follower, streamlit_obj, session_id)
             if not data:
                 return False
+            if data == "":
+                continue
 
             # append everything in csv file
             csv_writer = csv.writer(file)
